@@ -15,7 +15,7 @@ class MyTask : public Task{
     MyTask(int begin, int end):begin_(begin),end_(end){}
     Any run(){
         std::cout<<"tid "<<std::this_thread::get_id()<<" begin"<<std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::seconds(3));
         uLong sum = 0;
         for(int i = begin_; i <= end_; i++){
             sum += i;
@@ -31,12 +31,16 @@ private:
 int main(){
 
     ThreadPool pool ;
+    pool.setMode(PoolMode::MODE_CACHED); 
     pool.start(4); 
 
     Result res = pool.submitTask(std::make_shared<MyTask>(1, 1000000));
     Result res2 = pool.submitTask(std::make_shared<MyTask>(1000001  , 2000000));
     Result res3 = pool.submitTask(std::make_shared<MyTask>(2000001, 3000000));
     Result res4 = pool.submitTask(std::make_shared<MyTask>(3000001, 4000000));
+    Result res5 = pool.submitTask(std::make_shared<MyTask>(4000001, 5000000));
+    Result res6 = pool.submitTask(std::make_shared<MyTask>(5000001, 6000000));
+    Result res7 = pool.submitTask(std::make_shared<MyTask>(6000001, 7000000));
 
     cout<<"doing task"<<endl;
     uLong sum = 0 ;

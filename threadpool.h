@@ -9,11 +9,12 @@
 #include<condition_variable> 
 #include<functional>
 #include<thread> 
+#include<unordered_map> 
 
 // 线程pool 支持的模式 
 enum class PoolMode{
     MODE_FIXED,
-    MODE_CACHE, 
+    MODE_CACHED, 
 };
 
 class Any{
@@ -113,13 +114,16 @@ private:
 
 class Thread{
 public:
-    using ThreadFunc = std::function<void()>;
+    using ThreadFunc = std::function<void(int)>;
     Thread(ThreadFunc func); 
     ~Thread();
     void start();
+    int getThreadId() const;
 private: 
     // std::thread th_; 
+    static int generateId_;  // 线程id生成器
     ThreadFunc func_; 
+    int threadId_; 
 };
 
 
@@ -136,6 +140,8 @@ public:
 
     // 设置任务队列大小
     void setTaskQueMaxThreshHold(int threshold);
+    // 设置线程池最大线程数量 CACHED 模式下有效
+    void setThreadSizeThreshHold(int threshold);
     // 提交任务
     Result submitTask(std::shared_ptr<Task> sp);
 
@@ -143,8 +149,17 @@ public:
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool & operator= (const ThreadPool&) =delete ;
 private: 
-    std::vector<std::unique_ptr<Thread>> threads_; 
+    // 线程列表
+    std::unordered_map<int,std::unique_ptr<Thread>> threads_; 
+    // std::vector<std::unique_ptr<Thread>> threads_; 
+    // 初始线程池大小
     size_t initThreadSize_; 
+    // 最大线程池大小
+    size_t threadSizeThreshHold_; 
+    // 当前线程池大小
+    std::atomic_size_t curThreadSize_; 
+    std::atomic_size_t idleThreadSize_; 
+
     // 裸指针 存在风险，当用户创建的任务对象是临时变量(非常容易非法访问)
     std::queue<std::shared_ptr<Task>> taskQue_; 
     std::atomic_int taskSize_;    //当前任务数量
@@ -155,10 +170,14 @@ private:
     std::condition_variable notEmpty_; 
     // 前置下滑线 C++ 标准库的变量命名方式 
 
-    PoolMode poolMode_;  
+    // 线程池模式 
+    PoolMode poolMode_; 
+    std::atomic_bool isPoolRunning_; 
+   
     //------定义线程函数------------
     // 为什么线程的回调函数在ThreadPool 创建， 一个是任务队列在线程池中，锁与条件变量 
-    void threadFunc(); 
+    void threadFunc(int threadId);  // 线程函数 
+    bool checkRunningState() const; 
 
 };
 
