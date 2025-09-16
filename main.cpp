@@ -15,7 +15,7 @@ class MyTask : public Task{
     MyTask(int begin, int end):begin_(begin),end_(end){}
     Any run(){
         std::cout<<"tid "<<std::this_thread::get_id()<<" begin"<<std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         uLong sum = 0;
         for(int i = begin_; i <= end_; i++){
             sum += i;
@@ -30,29 +30,33 @@ private:
 
 int main(){
 
-    ThreadPool pool ;
-    pool.setMode(PoolMode::MODE_CACHED); 
-    pool.start(4); 
+    {
+        ThreadPool pool ;
+        pool.setMode(PoolMode::MODE_CACHED); 
+        pool.start(4); 
 
-    Result res = pool.submitTask(std::make_shared<MyTask>(1, 1000000));
-    Result res2 = pool.submitTask(std::make_shared<MyTask>(1000001  , 2000000));
-    Result res3 = pool.submitTask(std::make_shared<MyTask>(2000001, 3000000));
-    Result res4 = pool.submitTask(std::make_shared<MyTask>(3000001, 4000000));
-    Result res5 = pool.submitTask(std::make_shared<MyTask>(4000001, 5000000));
-    Result res6 = pool.submitTask(std::make_shared<MyTask>(5000001, 6000000));
-    Result res7 = pool.submitTask(std::make_shared<MyTask>(6000001, 7000000));
+        Result res = pool.submitTask(std::make_shared<MyTask>(1, 1000000));
+        Result res2 = pool.submitTask(std::make_shared<MyTask>(1000001  , 2000000));
+        Result res3 = pool.submitTask(std::make_shared<MyTask>(2000001, 3000000));
+        Result res4 = pool.submitTask(std::make_shared<MyTask>(3000001, 4000000));
+        Result res5 = pool.submitTask(std::make_shared<MyTask>(4000001, 5000000));
+        Result res6 = pool.submitTask(std::make_shared<MyTask>(5000001, 6000000));
+        Result res7 = pool.submitTask(std::make_shared<MyTask>(6000001, 7000000));
 
-    cout<<"doing task"<<endl;
-    uLong sum = 0 ;
-    // MyTask 的 run 方法返回的必須是 uLong 
-    sum += res.get().cast_<uLong>();
-    sum += res2.get().cast_<uLong>();
-    sum += res3.get().cast_<uLong>();
-    sum += res4.get().cast_<uLong>();
+        cout<<"doing task"<<endl;
+        uLong sum = 0 ;
+        // MyTask 的 run 方法返回的必須是 uLong 
+        sum += res.get().cast_<uLong>();
+        sum += res2.get().cast_<uLong>();
+        sum += res3.get().cast_<uLong>();
+        sum += res4.get().cast_<uLong>();
 
-    cout<<"fuckfuckfuckressum: "<<sum<<endl;
-    cout<<"finish task"<<endl;
+        cout<<"fuckfuckfuckressum: "<<sum<<endl;
+        cout<<"finish task"<<endl;
+        std::this_thread::sleep_for(chrono::seconds(10));
+    }
     
+    getchar();
 #if 0
     // bug 代码 增加了 Semophore 和Result 的移动构造还是不行！ 
     vector<Result> res; 
@@ -67,6 +71,6 @@ int main(){
     }
     cout<<"fuckfuckfuckres: "<<sum<<endl;
 #endif 
-    getchar();
+    
 
 }

@@ -20,7 +20,19 @@ ThreadPool::ThreadPool()
 { }
 
 // 析构函数 如何释放线程资源？ 
-ThreadPool::~ThreadPool(){}
+ThreadPool::~ThreadPool(){
+    
+    isPoolRunning_ = false;
+    // 思考一下 上锁场景 交任务 拿任务 等待任务 
+    std::unique_lock<std::mutex> lock(taskQueMtx_);
+    // 思考一下 对的子线程都阻塞在notEmpty_上 
+    notEmpty_.notify_all();
+    exitCond_.wait(lock,[this]{
+        return threads_.size() == 0;
+    });
+    
+
+}
 
 
 // 设置工作线程
@@ -78,47 +90,57 @@ void ThreadPool::threadFunc(int threadId){
     // std::cout<<"end threadFunc tid"<<std::this_thread::get_id()
     //     <<std::endl;
     auto lastTime = std::chrono::high_resolution_clock::now(); 
-    for(;;){
+    while(isPoolRunning_){
         std::unique_lock<std::mutex> lock(taskQueMtx_);
         // std::cout<<"tid:"<<std::this_thread::get_id()<<" wait task"<<std::endl;
         std::cout<<"threadId:"<<threadId<<" wait task"<<std::endl;
-        if(poolMode_ == PoolMode::MODE_CACHED){
-            // 有点不理解这里为什么要taskQue需要>0才等待 因为后面是有清除闲置线程的 而队列>0通常是不闲置的 
-            // 如此设计 怎么删除闲置线程？ 旧设计 while(taskQue_.size()> 0) 才等待 出错了！
-            // 9.15 为什么!=0 不需要加cv.wait? 因为此时有任务并且上文已获取锁 
-            // 设计taskQue读写均需要上锁  因此不会脏读 
-            while(taskQue_.size() == 0){
-                if(std::cv_status::timeout == notEmpty_.wait_for(lock,std::chrono::seconds(1))){
-                    auto now = std::chrono::high_resolution_clock::now(); 
-                    auto dur = std::chrono::duration_cast<std::chrono::seconds>(now - lastTime); 
-                    if(dur > std::chrono::seconds(10)
-                        && curThreadSize_ > initThreadSize_){
+        while (taskQue_.size() == 0)
+        {
+            if (poolMode_ == PoolMode::MODE_CACHED)
+            {
+                // 有点不理解这里为什么要taskQue需要>0才等待 因为后面是有清除闲置线程的 而队列>0通常是不闲置的
+                // 如此设计 怎么删除闲置线程？ 旧设计 while(taskQue_.size()> 0) 才等待 出错了！
+                // 9.15 为什么!=0 不需要加cv.wait? 因为此时有任务并且上文已获取锁
+                // 设计taskQue读写均需要上锁  因此不会脏读
+
+                if (std::cv_status::timeout == notEmpty_.wait_for(lock, std::chrono::seconds(1)))
+                {
+                    auto now = std::chrono::high_resolution_clock::now();
+                    auto dur = std::chrono::duration_cast<std::chrono::seconds>(now - lastTime);
+                    if (dur > std::chrono::seconds(10) && curThreadSize_ > initThreadSize_)
+                    {
                         // 如果闲置时间超过10秒，则删除闲置线程
-                        // 1. 将线程从线程列表中删除 
-                        // 2. ThreadPool 线程数量对应变量及时更新 
-                        // 3. 回收线程资源 return 就回收了！ 
+                        // 1. 将线程从线程列表中删除
+                        // 2. ThreadPool 线程数量对应变量及时更新
+                        // 3. 回收线程资源 return 就回收了！
                         threads_.erase(threadId);
                         curThreadSize_.fetch_sub(1);
                         idleThreadSize_.fetch_sub(1);
-                        std::cout<<"threadId:"<<threadId<<" exit"<<std::endl; 
-                        // std::cout<<"std threadId:"<<std::this_thread::get_id()<<" exit"<<std::endl; 
-                        // std::cout<<"curThreadSize:"<<curThreadSize_<<std::endl; 
-                        // std::cout<<"idleThreadSize:"<<idleThreadSize_<<std::endl; 
+                        std::cout << "threadId:" << threadId << " exit" << std::endl;
+                        // std::cout<<"std threadId:"<<std::this_thread::get_id()<<" exit"<<std::endl;
+                        // std::cout<<"curThreadSize:"<<curThreadSize_<<std::endl;
+                        // std::cout<<"idleThreadSize:"<<idleThreadSize_<<std::endl;
                         // break; //还不够 还没有完全删除线程
-                        return; 
+                        return;
                     }
                 }
             }
-        }else{
-            // 固定线程池模式 应该设置为超时模式，方便线程池析构销毁资源 
-            if(!notEmpty_.wait_for(lock,std::chrono::seconds(100),[this]{
-                return taskQue_.size() > 0;
-            })){
-                std::cout<<"taskQue is empty wait_for timeout "<<std::endl;
-                continue;
+            else
+            {
+                // 固定线程池模式 应该设置为超时模式，方便线程池析构销毁资源
+                notEmpty_.wait(lock); 
+                // 
+            }
+            if(!isPoolRunning_){
+                std::cout<<"threadId:"<<threadId<<" exit"<<std::endl;
+                threads_.erase(threadId);
+                curThreadSize_.fetch_sub(1);
+                idleThreadSize_.fetch_sub(1);
+                exitCond_.notify_all(); 
+                return; 
             }
         }
-        
+
         // std::cout<<"tid:"<<std::this_thread::get_id()<<" got task"<<std::endl;
         std::cout<<"threadId:"<<threadId<<" got task"<<std::endl;
         // 线程空闲数量减1
@@ -144,6 +166,13 @@ void ThreadPool::threadFunc(int threadId){
         // 线程空闲数量加1
         idleThreadSize_.fetch_add(1); 
     }
+    // 执行结束
+    std::cout<<"threadId:"<<threadId<<" exit"<<std::endl;
+    threads_.erase(threadId);
+    curThreadSize_.fetch_sub(1);
+    idleThreadSize_.fetch_sub(1);
+    exitCond_.notify_all(); 
+    return;
 }
 // 提交任务
 Result ThreadPool::submitTask(std::shared_ptr<Task> sp){

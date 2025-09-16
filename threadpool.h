@@ -168,6 +168,7 @@ private:
     std::mutex taskQueMtx_; 
     std::condition_variable notFull_; 
     std::condition_variable notEmpty_; 
+    std::condition_variable exitCond_; 
     // 前置下滑线 C++ 标准库的变量命名方式 
 
     // 线程池模式 
